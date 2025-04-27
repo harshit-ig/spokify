@@ -16,34 +16,96 @@ Spokify is a web application that helps users learn to speak English fluently us
 - [Production Deployment](#-production-deployment)
 - [License](#-license)
 
-## 🚀 Quick Start
+## �� Quick Start
 
-For a fast development setup, follow these steps:
+For a complete development setup, follow these steps in order:
 
 1. **Clone and install dependencies**
    ```bash
+   # Clone the repository
    git clone https://github.com/yourusername/spokify.git
    cd spokify
-   npm run install:all
-   ```
-
-2. **Set up environment (minimum required)**
-   ```bash
-   # Copy the example env file
-   cp backend/.env.example backend/.env
    
-   # Edit the MongoDB connection
-   # For local MongoDB: mongodb://localhost:27017/spokify
+   # Install all dependencies (root, backend, and frontend)
+   npm run install:all
+   
+   # Alternatively, install each separately:
+   npm install
+   cd backend && npm install
+   cd ../frontend && npm install
    ```
 
-3. **Start the development servers**
+2. **Set up both MongoDB instances**
+   
+   **A. Local MongoDB** (for user authentication and main app data)
+   - Install MongoDB locally or use MongoDB Atlas
+   - Create a database named `spokify`
+   - Configure connection in backend/.env:
+     ```
+     # Copy the example env file
+     cp backend/.env.example backend/.env
+     
+     # Edit MONGO_URI for local MongoDB
+     MONGO_URI=mongodb://localhost:27017/spokify
+     ```
+
+   **B. MongoDB Atlas** (for AI communication)
+   - Create a MongoDB Atlas account at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
+   - Create a new cluster
+   - Create a database named `chatapp` with these collections:
+     - `prompts`
+     - `responses`
+     - `chat_history`
+   - Create a database user with read/write permissions
+   - Get your connection string from Atlas:
+     ```
+     mongodb+srv://<username>:<password>@<cluster>.mongodb.net/chatapp
+     ```
+   - Save this connection string for the AI server setup
+
+3. **Start development servers with mobile access**
    ```bash
-   npm run dev
+   # Run both backend and frontend with mobile device access
+   npm run mobile-dev
+   
+   # This makes the app available on your local network
    ```
 
-4. **Access the application**
-   - Frontend: http://localhost:5173
+4. **Access the web application**
+   - Frontend: http://localhost:5173 (or your local IP for mobile access)
    - Backend API: http://localhost:5000
+
+5. **Set up AI Server on Intel Tiber Cloud**
+   - Sign up for Intel Developer Cloud
+   - Create a PyTorch 2.6 notebook instance
+   - Copy the code from `ai_server.py` into a Jupyter notebook cell
+   - Update the MongoDB connection URL with your Atlas connection string:
+     ```python
+     # In the notebook, find this line
+     MONGODB_URI = os.getenv("MONGODB_URI") 
+     # And replace with
+     MONGODB_URI = "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/chatapp"
+     ```
+   - Install required packages:
+     ```python
+     !pip install transformers==4.71.1 pymongo python-dotenv bson uuid
+     ```
+   - Verify the transformers version:
+     ```python
+     !pip show transformers
+     ```
+   - Log in to Hugging Face (you must have access to the `microsoft/Phi-3.5-mini-instruct` model):
+     ```python
+     !huggingface-cli login
+     # Enter your token when prompted
+     ```
+   - Run the notebook cells to start the AI server
+
+Now you have a complete development environment with:
+- Frontend and backend servers running with mobile device access
+- Local MongoDB for user authentication and data
+- MongoDB Atlas for AI conversation storage
+- AI server running on Intel Tiber cloud with access to the Phi-3.5 model
 
 ## ✨ Features
 
