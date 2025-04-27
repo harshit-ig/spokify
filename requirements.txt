@@ -1,0 +1,16 @@
+# AI Server Requirements
+torch>=2.1.0,<3.0.0  # PyTorch 2.6 recommended for Intel Tiber cloud
+transformers==4.71.1  # Exact version as mentioned in the comments
+pymongo>=4.5.0
+python-dotenv>=1.0.0
+bson>=0.5.10
+uuid>=1.30
+logging>=0.4.9.6
+
+# Hardware acceleration - Intel Tiber cloud uses XPU
+# When using Intel Tiber cloud, these are pre-installed:
+# intel-extension-for-pytorch  # For Intel XPU acceleration
+# bigdl-llm                    # Optional: For Intel optimizations
+
+# For NVIDIA GPUs (if not using Intel hardware)
+# cuda-python  # Uncomment when using NVIDIA GPUs 
