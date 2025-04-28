@@ -23,7 +23,7 @@ For a complete development setup, follow these steps in order:
 1. **Clone and install dependencies**
    ```bash
    # Clone the repository
-   git clone https://github.com/yourusername/spokify.git
+   git clone https://github.com/harshit-ig/spokify.git
    cd spokify
    
    # Install all dependencies (root, backend, and frontend)
@@ -144,7 +144,7 @@ The project consists of three main components that can be developed separately o
 
 #### 1. Clone Repository
 ```bash
-git clone https://github.com/yourusername/spokify.git
+git clone https://github.com/harshit-ig/spokify.git
 cd spokify
 ```
 
