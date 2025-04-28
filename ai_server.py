@@ -1,5 +1,5 @@
 import torch
-# transformers ==4.71.1 is Must
+# transformers ==4.47.1 is Must
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer, StoppingCriteria, StoppingCriteriaList
 from threading import Thread
 import json
@@ -29,12 +29,12 @@ logger = logging.getLogger(__name__)
 # MongoDB Atlas connection
 MONGODB_URI = os.getenv("MONGODB_URI")
 client = pymongo.MongoClient(MONGODB_URI)
-db = client.chatapp
+# Use the main database instead of 'chatapp'
+db = client.spokify
+# Match collections to Mongoose models
 prompt_collection = db.prompts
-response_collection = db.responses
-chat_history_collection = db.chat_history
-
-
+response_collection = db.responses 
+chat_history_collection = db.chathistories
 
 # Replace the model loading block with:
 logger.info("Loading model and tokenizer...")
@@ -71,14 +71,20 @@ class StopOnTokens(StoppingCriteria):
         return False
 
 # MongoDB based chat function
-def process_mongodb_chat(user_message, user_id, response_id , prompt_id):
+def process_mongodb_chat(user_message, user_id, response_id, prompt_id):
     """Process a chat message from MongoDB and stream response back to MongoDB"""
     
     # Get chat history from MongoDB or initialize
     history_doc = chat_history_collection.find_one({"user_id": user_id})
     if not history_doc:
         user_history = []
-        chat_history_collection.insert_one({"user_id": user_id, "messages": []})
+        # Create new chat history document matching Mongoose schema
+        chat_history_collection.insert_one({
+            "user_id": user_id, 
+            "messages": [],
+            "created_at": datetime.now(),
+            "updated_at": datetime.now()
+        })
     else:
         user_history = history_doc.get("messages", [])
     
@@ -105,6 +111,7 @@ def process_mongodb_chat(user_message, user_id, response_id , prompt_id):
     
     logger.info(f"Cleaned user message: {user_message}")
 
+    # Add message to history with structure matching MessageSchema
     user_history.append({"role": "user", "content": user_message, "timestamp": datetime.now()})
    
     system_prompt = """
@@ -181,6 +188,7 @@ Emma: "You're getting there! We say:
     logger.info(f"Conversation structure: {[msg['role'] for msg in conversation]}")
     
     # Initialize the response in MongoDB (empty but with status)
+    # Match fields with Mongoose Response model
     response_collection.update_one(
         {"_id": response_id},
         {"$set": {
@@ -188,7 +196,8 @@ Emma: "You're getting there! We say:
             "tokens": [],
             "complete": False,
             "error": None,
-            "updated_at": datetime.now()
+            "updated_at": datetime.now(),
+            "created_at": datetime.now()
         }},
         upsert=True
     )
@@ -219,9 +228,6 @@ Emma: "You're getting there! We say:
             {"$set": {"error": error_msg, "complete": True, "updated_at": datetime.now()}}
         )
         return
-
-
-
 
     # Create stopping criteria to prevent generating User: tags
     stop_words = ["<|end|>", "<|user|>"]
@@ -286,7 +292,7 @@ Emma: "You're getting there! We say:
             # Add token to the collected chunks
             collected_chunks.append(new_text)
             
-            # Update MongoDB with new token
+            # Update MongoDB with new token - matches Response schema
             response_collection.update_one(
                 {"_id": response_id},
                 {
@@ -313,18 +319,30 @@ Emma: "You're getting there! We say:
                     full_response = parts[1].strip()
         
         # Add assistant response to history in MongoDB
+        # Use consistent timestamp field name
         user_history.append({"role": "assistant", "content": full_response, "timestamp": datetime.now()})
+        
+        # Update chat history with new message and update timestamp
         chat_history_collection.update_one(
             {"user_id": user_id},
-            {"$set": {"messages": user_history}}
+            {
+                "$set": {
+                    "messages": user_history,
+                    "updated_at": datetime.now()
+                }
+            }
         )
         
-        # Mark response as complete in MongoDB
+        # Mark response as complete in MongoDB - matches Response schema
         response_collection.update_one(
             {"_id": response_id},
-            {"$set": {"complete": True, "full_response": full_response, "updated_at": datetime.now()}}
+            {"$set": {
+                "complete": True, 
+                "full_response": full_response, 
+                "updated_at": datetime.now()
+            }}
         )
-        # Store the response ID in the prompt document
+        # Store the response ID in the prompt document - matches Prompt schema
         prompt_collection.update_one(
                     {"_id": prompt_id},
                     {"$set": {
@@ -351,7 +369,7 @@ def poll_mongodb_for_prompts():
     
     while True:
         try:
-            # Find new prompts (unprocessed ones)
+            # Find new prompts (unprocessed ones) - matches Prompt schema
             prompts = prompt_collection.find({"processed": False}).sort("created_at", 1)
             
             for prompt in prompts:
@@ -361,18 +379,19 @@ def poll_mongodb_for_prompts():
                 if prompt_id in processed_prompts:
                     continue
                 # Generate a response ID
-                response_id = str(uuid.uuid4())
                 response_id = ObjectId()
                 
-                # Mark as being processed
+                # Mark as being processed - matches Prompt schema
                 prompt_collection.update_one(
                     {"_id": prompt_id},
-                    {"$set": {"response_id": response_id, "processing": True, "processed_at": datetime.now()}}
+                    {"$set": {
+                        "response_id": response_id, 
+                        "processing": True, 
+                        "processed_at": datetime.now()
+                    }}
                 )
                 
-                
-                
-                # Process the prompt
+                # Process the prompt - uses fields from Prompt schema
                 user_message = prompt.get("message", "")
                 user_id = prompt.get("user_id", "default_user")
                 
@@ -381,10 +400,8 @@ def poll_mongodb_for_prompts():
                 # Start processing in a new thread
                 Thread(
                     target=process_mongodb_chat,
-                    args=(user_message, user_id, response_id , prompt_id)
+                    args=(user_message, user_id, response_id, prompt_id)
                 ).start()
-                
-                
                 
                 # Add to processed set
                 processed_prompts.add(prompt_id)

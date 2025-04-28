@@ -16,7 +16,7 @@ Spokify is a web application that helps users learn to speak English fluently us
 - [Production Deployment](#-production-deployment)
 - [License](#-license)
 
-## �� Quick Start
+## 🚀 Quick Start
 
 For a complete development setup, follow these steps in order:
 
@@ -35,33 +35,50 @@ For a complete development setup, follow these steps in order:
    cd ../frontend && npm install
    ```
 
-2. **Set up both MongoDB instances**
-   
-   **A. Local MongoDB** (for user authentication and main app data)
-   - Install MongoDB locally or use MongoDB Atlas
-   - Create a database named `spokify`
-   - Configure connection in backend/.env:
-     ```
-     # Copy the example env file
-     cp backend/.env.example backend/.env
-     
-     # Edit MONGO_URI for local MongoDB
-     MONGO_URI=mongodb://localhost:27017/spokify
-     ```
-
-   **B. MongoDB Atlas** (for AI communication)
+2. **Set up MongoDB Atlas**
    - Create a MongoDB Atlas account at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
-   - Create a new cluster
-   - Create a database named `chatapp` with these collections:
-     - `prompts`
-     - `responses`
-     - `chat_history`
-   - Create a database user with read/write permissions
-   - Get your connection string from Atlas:
-     ```
-     mongodb+srv://<username>:<password>@<cluster>.mongodb.net/chatapp
-     ```
-   - Save this connection string for the AI server setup
+   - Create a new cluster:
+     - Select your preferred cloud provider and region
+     - Choose a cluster tier (the free tier is sufficient for development)
+     - Give your cluster a name (e.g., "spokify")
+     - Click "Create Cluster" and wait for it to be provisioned
+
+   - Create a database user while your cluster is being created:
+     - Go to "Database Access" in the sidebar
+     - Click "Add New Database User"
+     - Set authentication method to "Password"
+     - Enter a username and password (save these credentials securely)
+     - Set appropriate privileges (e.g., "Read and Write to Any Database")
+     - Click "Add User"
+
+   - Configure network access:
+     - Go to "Network Access" in the sidebar
+     - Click "Add IP Address"
+     - Select "Allow Access from Anywhere" (for the AI Server)
+     - Click "Confirm"
+
+   - Get your connection string:
+     - Go to the "Database" section
+     - Click "Connect" on your cluster
+     - Select "Connect your application"
+     - Select "Node.js" and the version
+     - Copy the provided connection string that looks like this:
+       `mongodb+srv://<username>:<password>@spokify.xxxxx.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`
+       - Replace `<username>` with your actual database username
+       - Replace `<password>` with your actual database password
+       - You can leave `myFirstDatabase` as is or replace it with `spokify` (the database will be created automatically regardless of what name you specify here)
+
+   - Set up your connection strings:
+     - For backend, create/modify the `.env` file:
+       ```
+       # In backend/.env
+       MONGO_URI=mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority
+       ```
+     - For AI server, either set it in your environment or directly in the code:
+       ```python
+       # In ai_server.py
+       MONGODB_URI = "mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority"
+       ```
 
 3. **Start development servers with mobile access**
    ```bash
@@ -84,11 +101,11 @@ For a complete development setup, follow these steps in order:
      # In the notebook, find this line
      MONGODB_URI = os.getenv("MONGODB_URI") 
      # And replace with
-     MONGODB_URI = "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/chatapp"
+     MONGODB_URI = "mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority"
      ```
    - Install required packages:
      ```python
-     !pip install transformers==4.71.1 pymongo python-dotenv bson uuid
+     !pip install transformers==4.47.1 pymongo python-dotenv uuid huggingface_hub
      ```
    - Verify the transformers version:
      ```python
@@ -96,15 +113,15 @@ For a complete development setup, follow these steps in order:
      ```
    - Log in to Hugging Face (you must have access to the `microsoft/Phi-3.5-mini-instruct` model):
      ```python
-     !huggingface-cli login
-     # Enter your token when prompted
+     from huggingface_hub import notebook_login
+     notebook_login()
+     # Enter your token when prompted in the UI
      ```
    - Run the notebook cells to start the AI server
 
 Now you have a complete development environment with:
 - Frontend and backend servers running with mobile device access
-- Local MongoDB for user authentication and data
-- MongoDB Atlas for AI conversation storage
+- MongoDB Atlas for both user authentication and AI conversations
 - AI server running on Intel Tiber cloud with access to the Phi-3.5 model
 
 ## ✨ Features
@@ -174,7 +191,7 @@ cp backend/.env.example backend/.env
 Example `backend/.env` file:
 ```
 PORT=5000
-MONGO_URI=mongodb://localhost:27017/spokify
+MONGO_URI=mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify
 JWT_SECRET=your_secure_jwt_secret_key
 JWT_EXPIRE=30d
 JWT_COOKIE_EXPIRE=30
@@ -233,7 +250,7 @@ Intel Tiber cloud provides the ideal environment for the AI server with pre-conf
 
 4. **Install required packages**
    ```python
-   !pip install transformers==4.71.1 pymongo python-dotenv bson uuid
+   !pip install transformers==4.47.1 pymongo python-dotenv  uuid huggingface_hub
    ```
 
 5. **Verify transformers version**
@@ -241,7 +258,14 @@ Intel Tiber cloud provides the ideal environment for the AI server with pre-conf
    !pip show transformers
    ```
 
-6. **Run the notebook cells to start the AI server**
+6. **Authenticate with Hugging Face**
+   ```python
+   from huggingface_hub import notebook_login
+   notebook_login()
+   # This will display a UI for entering your Hugging Face token
+   ```
+
+7. **Run the notebook cells to start the AI server**
 
 #### Option 2: Local AI Server Setup
 
@@ -260,7 +284,11 @@ For local development with sufficient hardware:
 
 3. **Authenticate with Hugging Face**
    ```bash
+   # For command line environment
    huggingface-cli login
+   # OR for Jupyter notebooks
+   from huggingface_hub import notebook_login
+   notebook_login()
    ```
 
 4. **Set up environment variables**
@@ -278,28 +306,38 @@ Note: The AI server requires substantial computational resources. For best resul
 
 ## 🗄️ MongoDB Configuration
 
-The application requires two MongoDB database setups:
+The application uses MongoDB for all data storage:
 
-### 1. Main Web App Database
-Used by the Express backend for user data, lessons, etc.
-- Configure in `backend/.env` as `MONGO_URI`
-- Can be local MongoDB for development
-
-### 2. AI Server Database (MongoDB Atlas)
-Used for AI conversation storage and processing:
-- Database: `chatapp`
-- Collections:
+### Main Database (`spokify`)
+- **Database name**: `spokify` (created automatically on first connection)
+- **Collections** (automatically created with Mongoose naming conventions):
+  - `users`: Stores user accounts and authentication data
   - `prompts`: Stores user prompts to the AI
   - `responses`: Stores AI-generated responses
-  - `chat_history`: Stores conversation history
+  - `chathistories`: Stores conversation history between users and AI (note: lowercase and pluralized)
+  - `lessons`: Stores lesson content
+  - `userprogresses`: Stores user learning progress
 
-To set up the AI MongoDB correctly:
+### Important Notes on MongoDB Usage
+- **Automatic creation**: The database and all collections are created automatically when the application first connects. You don't need to manually create any databases or collections.
+- **Connection string**: While the connection string includes a database name (`spokify`), this is optional. The application will create the database with the specified name automatically.
+- **Collection naming**: Mongoose automatically converts collection names to lowercase and pluralizes them. For example, a model named `ChatHistory` becomes a collection named `chathistories`.
+- **Test database**: MongoDB may create a "test" database during initial connections. This is normal behavior.
+- **Python/Node.js consistency**: If accessing collections from both Node.js (backend) and Python (AI server), ensure collection names match Mongoose's conventions:
+  ```python
+  # In Python code, use:
+  chat_history_collection = db.chathistories  # NOT db.ChatHistory
+  ```
+
+To set up MongoDB Atlas correctly:
 1. Create a MongoDB Atlas account
 2. Create a new cluster
-3. Create a database named `chatapp`
-4. Create the required collections
-5. Set up a database user with read/write access
-6. Add the connection string to your AI server environment
+3. Create a database user with username and password
+4. Configure network access to allow connections from anywhere
+5. Get your connection string and replace placeholders with your actual credentials
+6. Add the connection string to:
+   - `backend/.env` as `MONGO_URI=mongodb+srv://yourusername:yourpassword@cluster0.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority`
+   - `ai_server.py` as `MONGODB_URI` value
 
 ## 📁 Project Structure
 
@@ -370,7 +408,7 @@ Refer to this section when you're ready to deploy the application to production.
    - Create `backend/.env.production` or update `.env`:
    ```
    PORT=5000
-   MONGO_URI=your_production_mongodb_uri
+   MONGO_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/spokify
    JWT_SECRET=your_secure_production_jwt_secret
    JWT_EXPIRE=30d
    JWT_COOKIE_EXPIRE=30
@@ -416,7 +454,8 @@ Refer to this section when you're ready to deploy the application to production.
 
 1. **Set up production environment**
    ```
-   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/chatapp
+   # Use the same MongoDB connection string as the backend
+   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/spokify
    LOG_LEVEL=INFO
    ```
 
