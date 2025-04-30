@@ -1,6 +1,6 @@
 # AI Server Requirements
 torch>=2.1.0,<3.0.0  # PyTorch 2.6 recommended for Intel Tiber cloud
-transformers==4.47.1  # Exact version as mentioned in the comments
+transformers>=4.51.0
 pymongo>=4.5.0
 python-dotenv>=1.0.0
 bson>=0.5.10

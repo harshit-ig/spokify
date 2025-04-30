@@ -104,10 +104,9 @@ For a complete development setup, follow these steps in order:
      MONGO_URL = "mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority"
      ```
    - Install required packages:
-     ```python
-     !pip install transformers==4.47.1 pymongo python-dotenv uuid huggingface_hub pyyaml
+     ```pip install transformers pymongo python-dotenv uuid huggingface_hub pyyaml accelerate
      ```
-   - Run the notebook cells to start the AI server
+   - Run the notebook cells to start the AI server after restarting the Kernal
 
 Now you have a complete development environment with:
 - Frontend and backend servers running with mobile device access
@@ -130,7 +129,7 @@ Now you have a complete development environment with:
 - **Backend**: Node.js, Express, TypeScript
 - **Database**: MongoDB
 - **Authentication**: JWT
-- **AI Engine**: Python, Hugging Face Transformers (Phi-3.5-mini-instruct)
+- **AI Engine**: Python, Hugging Face Transformers (Qwen3-8B)
 
 ## 🔧 Development Setup
 
@@ -239,16 +238,10 @@ Intel Tiber cloud provides the ideal environment for the AI server with pre-conf
    - Update the MongoDB connection URL in the notebook
 
 4. **Install required packages**
-   ```python
-   !pip install transformers==4.47.1 pymongo python-dotenv  uuid huggingface_hub
+   ```pip install transformers pymongo python-dotenv uuid huggingface_hub pyyaml accelerate
    ```
 
-5. **Verify transformers version**
-   ```python
-   !pip show transformers
-   ```
-
-6. **Run the notebook cells to start the AI server**
+5. **Run the notebook cells to start the AI server after restarting the Kernal**
 
 #### Option 2: Local AI Server Setup
 
