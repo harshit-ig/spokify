@@ -6,6 +6,7 @@ python-dotenv>=1.0.0
 bson>=0.5.10
 uuid>=1.30
 logging>=0.4.9.6
+pyyaml>=6.0.2
 
 # Hardware acceleration - Intel Tiber cloud uses XPU
 # When using Intel Tiber cloud, these are pre-installed:

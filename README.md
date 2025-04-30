@@ -72,12 +72,12 @@ For a complete development setup, follow these steps in order:
      - For backend, create/modify the `.env` file:
        ```
        # In backend/.env
-       MONGO_URI=mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority
+       MONGO_URL=mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority
        ```
      - For AI server, either set it in your environment or directly in the code:
        ```python
        # In ai_server.py
-       MONGODB_URI = "mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority"
+       MONGO_URL = "mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority"
        ```
 
 3. **Start development servers with mobile access**
@@ -99,23 +99,13 @@ For a complete development setup, follow these steps in order:
    - Update the MongoDB connection URL with your Atlas connection string:
      ```python
      # In the notebook, find this line
-     MONGODB_URI = os.getenv("MONGODB_URI") 
+     MONGO_URL = os.getenv("MONGO_URL") 
      # And replace with
-     MONGODB_URI = "mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority"
+     MONGO_URL = "mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority"
      ```
    - Install required packages:
      ```python
-     !pip install transformers==4.47.1 pymongo python-dotenv uuid huggingface_hub
-     ```
-   - Verify the transformers version:
-     ```python
-     !pip show transformers
-     ```
-   - Log in to Hugging Face (you must have access to the `microsoft/Phi-3.5-mini-instruct` model):
-     ```python
-     from huggingface_hub import notebook_login
-     notebook_login()
-     # Enter your token when prompted in the UI
+     !pip install transformers==4.47.1 pymongo python-dotenv uuid huggingface_hub pyyaml
      ```
    - Run the notebook cells to start the AI server
 
@@ -184,14 +174,14 @@ cp backend/.env.example backend/.env
 
 # Edit the .env file with your settings
 # Most important for development:
-# - MONGO_URI (database connection)
+# - MONGO_URL (database connection)
 # - JWT_SECRET (any secure random string)
 ```
 
 Example `backend/.env` file:
 ```
 PORT=5000
-MONGO_URI=mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify
+MONGO_URL=mongodb+srv://yourusername:yourpassword@spokify.xxxxx.mongodb.net/spokify
 JWT_SECRET=your_secure_jwt_secret_key
 JWT_EXPIRE=30d
 JWT_COOKIE_EXPIRE=30
@@ -258,14 +248,7 @@ Intel Tiber cloud provides the ideal environment for the AI server with pre-conf
    !pip show transformers
    ```
 
-6. **Authenticate with Hugging Face**
-   ```python
-   from huggingface_hub import notebook_login
-   notebook_login()
-   # This will display a UI for entering your Hugging Face token
-   ```
-
-7. **Run the notebook cells to start the AI server**
+6. **Run the notebook cells to start the AI server**
 
 #### Option 2: Local AI Server Setup
 
@@ -276,28 +259,13 @@ For local development with sufficient hardware:
    pip install -r requirements.txt
    ```
 
-2. **Configure MongoDB Atlas**
-   - Create a database named `chatapp` with collections:
-     - `prompts`
-     - `responses`
-     - `chat_history`
-
-3. **Authenticate with Hugging Face**
-   ```bash
-   # For command line environment
-   huggingface-cli login
-   # OR for Jupyter notebooks
-   from huggingface_hub import notebook_login
-   notebook_login()
-   ```
-
-4. **Set up environment variables**
+2. **Set up environment variables**
    - Create a `.env` file in the AI server directory:
    ```
-   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/chatapp
+   MONGO_URL=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/
    ```
 
-5. **Run the AI server**
+3. **Run the AI server**
    ```bash
    python ai_server.py
    ```
@@ -336,8 +304,8 @@ To set up MongoDB Atlas correctly:
 4. Configure network access to allow connections from anywhere
 5. Get your connection string and replace placeholders with your actual credentials
 6. Add the connection string to:
-   - `backend/.env` as `MONGO_URI=mongodb+srv://yourusername:yourpassword@cluster0.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority`
-   - `ai_server.py` as `MONGODB_URI` value
+   - `backend/.env` as `MONGO_URL=mongodb+srv://yourusername:yourpassword@cluster0.xxxxx.mongodb.net/spokify?retryWrites=true&w=majority`
+   - `ai_server.py` as `MONGO_URL` value
 
 ## 📁 Project Structure
 
@@ -408,7 +376,7 @@ Refer to this section when you're ready to deploy the application to production.
    - Create `backend/.env.production` or update `.env`:
    ```
    PORT=5000
-   MONGO_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/spokify
+   MONGO_URL=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/spokify
    JWT_SECRET=your_secure_production_jwt_secret
    JWT_EXPIRE=30d
    JWT_COOKIE_EXPIRE=30
@@ -455,7 +423,7 @@ Refer to this section when you're ready to deploy the application to production.
 1. **Set up production environment**
    ```
    # Use the same MongoDB connection string as the backend
-   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/spokify
+   MONGO_URL=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/spokify
    LOG_LEVEL=INFO
    ```
 

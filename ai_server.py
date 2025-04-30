@@ -1,5 +1,4 @@
 import torch
-# transformers ==4.47.1 is Must
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer, StoppingCriteria, StoppingCriteriaList
 from threading import Thread
 import json
@@ -13,7 +12,6 @@ from datetime import datetime
 import uuid
 import signal
 import sys
-import os
 
 # Set up logging
 logging.basicConfig(
@@ -27,8 +25,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # MongoDB Atlas connection
-MONGODB_URI = os.getenv("MONGODB_URI")
-client = pymongo.MongoClient(MONGODB_URI)
+MONGO_URL = os.getenv("MONGODB_URI") 
+client = pymongo.MongoClient(MONGO_URL)
 # Use the main database instead of 'chatapp'
 db = client.spokify
 # Match collections to Mongoose models
@@ -36,28 +34,25 @@ prompt_collection = db.prompts
 response_collection = db.responses 
 chat_history_collection = db.chathistories
 
-# Replace the model loading block with:
-logger.info("Loading model and tokenizer...")
-model_id = "microsoft/Phi-3.5-mini-instruct"
-tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+# Load Qwen model and tokenizer
+logger.info("Loading Qwen model and tokenizer...")
+model_id = "Qwen/Qwen3-8B"
 
 try:
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_id,
+        trust_remote_code=True
+    )
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        torch_dtype=torch.float16,
-        trust_remote_code=True,
-        attn_implementation="eager"  # Add this line
-    ).to("xpu")
-    logger.info("Model loaded with float16 precision")
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+        trust_remote_code=True
+    )
+    logger.info("Qwen-3-8B model loaded successfully")
 except Exception as e:
-    logger.warning(f"Failed to load model with float16: {str(e)}")
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        trust_remote_code=True,
-        attn_implementation="eager"  # Add this line
-    ).to("xpu")
-    logger.info("Model loaded with default precision")
-
+    logger.error(f"Failed to load model: {str(e)}")
+    sys.exit(1)
 
 # Define stopping criteria
 class StopOnTokens(StoppingCriteria):
@@ -72,50 +67,19 @@ class StopOnTokens(StoppingCriteria):
 
 # MongoDB based chat function
 def process_mongodb_chat(user_message, user_id, response_id, prompt_id):
-    """Process a chat message from MongoDB and stream response back to MongoDB"""
+    """Process a chat message from MongoDB using Qwen3-8B"""
     
-    # Get chat history from MongoDB or initialize
+    # Get chat history
     history_doc = chat_history_collection.find_one({"user_id": user_id})
-    if not history_doc:
-        user_history = []
-        # Create new chat history document matching Mongoose schema
-        chat_history_collection.insert_one({
-            "user_id": user_id, 
-            "messages": [],
-            "created_at": datetime.now(),
-            "updated_at": datetime.now()
-        })
-    else:
-        user_history = history_doc.get("messages", [])
-    
-    # Clean the user message to remove any existing format markers
-    # First check for special tokens
-    if "<|user|>" in user_message and "<|end|>" in user_message:
-        # Extract the actual user message from the formatted input
-        match = re.search(r'<|user|> (.*?)<|end|>', user_message, re.DOTALL)
-        if match:
-            clean_message = match.group(1).strip()
-            logger.info(f"Extracted user message from special tokens: {clean_message}")
-            user_message = clean_message
-    
-    # Then remove any User/Assistant prefixes
-    if user_message.startswith('<|user|>'):
-        user_message = user_message.replace('<|user|>', '', 1).strip()
-    
-    # Remove any Assistant: tag if present
-    if '<|assistant|>' in user_message:
-        user_message = user_message.split('<|assistant|>', 1)[0].strip()
-    
-    # Convert "<|user|>" and "Assistant:" from the middle of messages
-    user_message = re.sub(r'User\s*:', '', user_message)
-    
-    logger.info(f"Cleaned user message: {user_message}")
+    user_history = history_doc.get("messages", []) if history_doc else []
 
-    # Add message to history with structure matching MessageSchema
+    # Clean input message
+    user_message = re.sub(r'(<\|user\|>|<\/?think>|<\/?im_end>|User:)', '', user_message).strip()
     user_history.append({"role": "user", "content": user_message, "timestamp": datetime.now()})
-   
-    system_prompt = """
-You are Emma, a friendly AI English conversation partner. Provide explicit corrections to help users improve their spoken English.
+    print(user_message)
+    print(user_history)
+    # Prepare system prompt
+    system_prompt = """You are Emma, a friendly AI English conversation partner. Provide explicit corrections to help users improve their spoken English.
 
 ===EXPLICIT CORRECTION GUIDELINES===
 1. **Error Identification**
@@ -177,18 +141,37 @@ Emma: "You're getting there! We say:
 - 'to go to the store' instead of 'to going store' What do you need to buy?"
 """
 
+    # Build conversation messages
+    messages = [
+        {"role": "system", "content": system_prompt},
+        *[{"role": msg["role"], "content": msg["content"]} for msg in user_history[-4:]],
+        {"role": "user", "content": user_message}
+    ]
 
-    # Build conversation in new order: history + system prompt + current message
-    conversation = []
-    conversation.extend(user_history[-100:-1])
-    conversation.append({"role": "system", "content": system_prompt})
-    conversation.extend(user_history[-5:-1])
-    conversation.append(user_history[-1])
-    
-    logger.info(f"Conversation structure: {[msg['role'] for msg in conversation]}")
-    
-    # Initialize the response in MongoDB (empty but with status)
-    # Match fields with Mongoose Response model
+    # Apply Qwen chat template with thinking disabled
+    try:
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False  # Disable thinking mode
+        )
+        model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+    except Exception as e:
+        error_msg = f"Template error: {str(e)}"
+        logger.error(error_msg)
+        response_collection.update_one(
+            {"_id": response_id},
+            {"$set": {"error": error_msg, "complete": True}}
+        )
+        return
+
+    # Set up stopping criteria
+    stop_words = ["<|im_end|>", "<|user|>"]
+    stop_token_ids = [tokenizer.encode(w, add_special_tokens=False) for w in stop_words]
+    stopping_criteria = StoppingCriteriaList([StopOnTokens(stop_token_ids)])
+
+    # Initialize response in MongoDB
     response_collection.update_one(
         {"_id": response_id},
         {"$set": {
@@ -196,170 +179,73 @@ Emma: "You're getting there! We say:
             "tokens": [],
             "complete": False,
             "error": None,
-            "updated_at": datetime.now(),
-            "created_at": datetime.now()
+            "updated_at": datetime.now()
         }},
         upsert=True
     )
-    # Modified prompt construction with Phi-3 tokens
-    try:
-        messages = ['===PAST CONVERSATION FOR CONTEXT===\n']
-        for msg in conversation[:-1]:
-            if msg["role"] == "system":
-                messages.append(f"\n===PAST CONVERSATION FOR CONTEXT END===\n<|system|>\n{msg['content']}\n<|end|>\n===CURRENT CONVERSATION FOR CONTEXT===")
-            elif msg["role"] == "user":
-                messages.append(f"<|user|>\n{msg['content']}<|end|>")
-            elif msg["role"] == "assistant":
-                messages.append(f"<|assistant|>\n{msg['content']}<|end|>")
-        messages.append(f"\n===CURRENT CONVERSATION FOR CONTEXT END===\n<|user|>\n{conversation[-1]['content']}<|end|>")
-        messages.append("<|assistant|>")  # Start of model's response
-        prompt_text = "\n".join(messages)
-        print(prompt_text)
-        
-        encoded = tokenizer(prompt_text, return_tensors="pt")
-        prompt = encoded['input_ids'].to("xpu")
-        attention_mask = encoded['attention_mask'].to("xpu")
-        
-    except Exception as e:
-        error_msg = f"Error in simplified prompt creation: {str(e)}"
-        logger.error(error_msg)
-        response_collection.update_one(
-            {"_id": response_id},
-            {"$set": {"error": error_msg, "complete": True, "updated_at": datetime.now()}}
-        )
-        return
 
-    # Create stopping criteria to prevent generating User: tags
-    stop_words = ["<|end|>", "<|user|>"]
-    try:
-        stop_token_ids = [tokenizer.encode(word, add_special_tokens=False) for word in stop_words]
-        stopping_criteria = StoppingCriteriaList([StopOnTokens(stop_token_ids)])
-    except Exception as e:
-        logger.error(f"Error creating stopping criteria: {str(e)}")
-        # Continue without stopping criteria if there's an error
-        stopping_criteria = None
-    
-    # Set up the streamer
+    # Set up streamer
     streamer = TextIteratorStreamer(tokenizer, skip_special_tokens=True, skip_prompt=True)
-    
-    # Handle the model generation
-    def model_generate():
-        try:
-          # In the model_generate() function:
-            generation_kwargs = {
-                "input_ids": prompt,
-                "max_new_tokens": 300,
-                "do_sample": True,
-                "temperature": 0.7,
-                "streamer": streamer,
-                "use_cache": True,  # Keep this as True for better performance
-                "pad_token_id": tokenizer.eos_token_id  # Add this
-            }
-            
-            # Add attention mask if available
-            if attention_mask is not None:
-                generation_kwargs["attention_mask"] = attention_mask
-                
-            # Add stopping criteria if available
-            if stopping_criteria is not None:
-                generation_kwargs["stopping_criteria"] = stopping_criteria
 
-            torch.xpu.synchronize()  # Add this line
-            model.generate(**generation_kwargs)
+    # Generation thread
+    def generate():
+        try:
+            generated_ids = model.generate(
+                **model_inputs,
+                max_new_tokens=512,
+                temperature=0.7,
+                do_sample=True,
+                streamer=streamer,
+                stopping_criteria=stopping_criteria
+            )
         except Exception as e:
-            # Log the error
-            error_msg = f"Generation error: {str(e)}"
-            logger.error(error_msg)
-            # Update MongoDB with the error
+            logger.error(f"Generation error: {str(e)}")
             response_collection.update_one(
                 {"_id": response_id},
-                {"$set": {"error": error_msg, "complete": True, "updated_at": datetime.now()}}
+                {"$set": {"error": str(e), "complete": True}}
             )
-    
-    # Generate in a separate thread
-    thread = Thread(target=model_generate)
-    thread.start()
-    
-    # Process streamer output and update MongoDB
+
+    Thread(target=generate).start()
+
+    # Stream handling
     collected_chunks = []
     try:
         for new_text in streamer:
-            # Skip any text that starts a new "User:" sequence
             if any(stop_word in new_text for stop_word in stop_words):
-                logger.info(f"Stopping generation due to stop word in: {new_text}")
                 break
             
-            # Add token to the collected chunks
             collected_chunks.append(new_text)
-            
-            # Update MongoDB with new token - matches Response schema
             response_collection.update_one(
                 {"_id": response_id},
-                {
-                    "$push": {"tokens": new_text},
-                    "$set": {"updated_at": datetime.now()}
-                }
+                {"$push": {"tokens": new_text}, "$set": {"updated_at": datetime.now()}}
             )
-            time.sleep(0.01)  # Small delay to simulate typing
+            time.sleep(0.01)
+
+        full_response = "".join(collected_chunks).replace("<|im_end|>", "").strip()
         
-        # Join all chunks to create the full response
-        full_response = "".join(collected_chunks)
-        if '<|end|>' in full_response:
-            full_response = full_response.split('<|end|>', 1)[0].strip()
-        full_response = full_response.replace("<|assistant|>", "").strip()
-        
-        # Ensure the response doesn't contain "User:" or other unwanted markers
-        if any(marker in full_response for marker in ["<|user|>", "<|assistant|>"]):
-            # Clean up the response if needed
-            logger.info(f"Cleaning response to remove markers")
-            full_response = full_response.split("<|user|>", 1)[0].strip()
-            if "<|assistant|>" in full_response:
-                parts = full_response.split("<|assistant|>", 1)
-                if len(parts) > 1:
-                    full_response = parts[1].strip()
-        
-        # Add assistant response to history in MongoDB
-        # Use consistent timestamp field name
-        user_history.append({"role": "assistant", "content": full_response, "timestamp": datetime.now()})
-        
-        # Update chat history with new message and update timestamp
+        # Update chat history
+        user_history.append({"role": "assistant", "content": full_response})
         chat_history_collection.update_one(
             {"user_id": user_id},
-            {
-                "$set": {
-                    "messages": user_history,
-                    "updated_at": datetime.now()
-                }
-            }
-        )
-        
-        # Mark response as complete in MongoDB - matches Response schema
-        response_collection.update_one(
-            {"_id": response_id},
-            {"$set": {
-                "complete": True, 
-                "full_response": full_response, 
-                "updated_at": datetime.now()
-            }}
-        )
-        # Store the response ID in the prompt document - matches Prompt schema
-        prompt_collection.update_one(
-                    {"_id": prompt_id},
-                    {"$set": {
-                        "response_id": response_id,
-                        "processed": True,
-                        "processing": False,
-                        "processed_at": datetime.now()
-                    }}
-                )
-    except Exception as e:
-        error_msg = f"Streaming error: {str(e)}"
-        logger.error(error_msg)
-        response_collection.update_one(
-            {"_id": response_id},
-            {"$set": {"error": error_msg, "complete": True, "updated_at": datetime.now()}}
+            {"$set": {"messages": user_history[-10:]}},  # Keep last 10 messages
+            upsert=True
         )
 
+        response_collection.update_one(
+            {"_id": response_id},
+            {"$set": {"complete": True, "full_response": full_response}}
+        )
+        prompt_collection.update_one(
+            {"_id": prompt_id},
+            {"$set": {"response_id": response_id, "processed": True}}
+        )
+
+    except Exception as e:
+        logger.error(f"Stream error: {str(e)}")
+        response_collection.update_one(
+            {"_id": response_id},
+            {"$set": {"error": str(e), "complete": True}}
+        )
 def poll_mongodb_for_prompts():
     """Poll MongoDB for new prompts and process them"""
     logger.info("Starting MongoDB polling for prompts...")
@@ -369,7 +255,7 @@ def poll_mongodb_for_prompts():
     
     while True:
         try:
-            # Find new prompts (unprocessed ones) - matches Prompt schema
+            # Find new prompts (unprocessed ones)
             prompts = prompt_collection.find({"processed": False}).sort("created_at", 1)
             
             for prompt in prompts:
@@ -379,19 +265,18 @@ def poll_mongodb_for_prompts():
                 if prompt_id in processed_prompts:
                     continue
                 # Generate a response ID
+                response_id = str(uuid.uuid4())
                 response_id = ObjectId()
                 
-                # Mark as being processed - matches Prompt schema
+                # Mark as being processed
                 prompt_collection.update_one(
                     {"_id": prompt_id},
-                    {"$set": {
-                        "response_id": response_id, 
-                        "processing": True, 
-                        "processed_at": datetime.now()
-                    }}
+                    {"$set": {"response_id": response_id, "processing": True, "processed_at": datetime.now()}}
                 )
                 
-                # Process the prompt - uses fields from Prompt schema
+                
+                
+                # Process the prompt
                 user_message = prompt.get("message", "")
                 user_id = prompt.get("user_id", "default_user")
                 
@@ -400,8 +285,10 @@ def poll_mongodb_for_prompts():
                 # Start processing in a new thread
                 Thread(
                     target=process_mongodb_chat,
-                    args=(user_message, user_id, response_id, prompt_id)
+                    args=(user_message, user_id, response_id , prompt_id)
                 ).start()
+                
+                
                 
                 # Add to processed set
                 processed_prompts.add(prompt_id)
