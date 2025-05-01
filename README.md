@@ -111,7 +111,7 @@ For a complete development setup, follow these steps in order:
 Now you have a complete development environment with:
 - Frontend and backend servers running with mobile device access
 - MongoDB Atlas for both user authentication and AI conversations
-- AI server running on Intel Tiber cloud with access to the Phi-3.5 model
+- AI server running on Intel Tiber cloud with access to the Qwen3-8B model
 
 ## ✨ Features
 
